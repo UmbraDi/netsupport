@@ -1,2 +1,16 @@
 # node-monitor
-Telegram bot for network nodes monitoring
+
+Telegram-бот для мониторинга сетевых узлов.
+
+## Описание
+Бот проверяет доступность узлов (ping), сохраняет историю и присылает уведомления о проблемах.
+
+## Технологии
+- Java 25
+- Maven
+- Hibernate
+- Telegram Bot API
+- PostgreSQL
+
+## Статус
+В разработке
