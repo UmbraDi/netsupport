@@ -1,0 +1,78 @@
+{
+  "defaultCredentials": {
+    "login": "admin",
+    "password": "admin"
+  },
+  "nodes": [
+    {
+      "ip": "172.17.10.20",
+      "name": "Fin-10-1",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.11.20",
+      "name": "Fin-10-2",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.10.19",
+      "name": "Fin-12-1",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.11.19",
+      "name": "Fin-12-2",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.10.21",
+      "name": "Fin-14-1",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.11.21",
+      "name": "Fin-14-2",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.0.100",
+      "name": "SRV-snch2",
+      "type": "server",
+      "monitor": "true",
+      "diagnostic": "false"
+    },
+    {
+      "ip": "172.16.0.10",
+      "name": "SRV-kaluga",
+      "type": "server",
+      "monitor": "true",
+      "diagnostic": "false"
+    }
+  ],
+  "houses": [
+    {
+      "name": "Финютина 10",
+      "switchIps": ["", ""]
+    },
+    {
+      "name": "Финютина 12",
+      "switchIps": ["", ""]
+    },
+    {
+      "name": "Финютина 14",
+      "switchIps": ["", ""]
+    }
+  ]
+}
