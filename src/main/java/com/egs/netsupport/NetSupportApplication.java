@@ -1,6 +1,6 @@
-package com.egs.nodemonitor;
+package com.egs.netsupport;
 
-public class NodeMonitorApplication {
+public class NetSupportApplication {
     public static void main(String[] args) {
         System.out.println("Node Monitor started");
     }
