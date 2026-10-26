@@ -1,18 +1,23 @@
 package com.egs.netsupport;
 
 import com.egs.netsupport.monitoring.PingService;
+import com.egs.netsupport.shared.model.Node;
 import com.egs.netsupport.shared.repository.NodeRepository;
 
+import java.util.List;
+
 public class NetSupportApplication {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         System.out.println("NetSupport started");
         NodeRepository repo = new NodeRepository();
-        System.out.println("Monitored nodes: " + repo.getMonitoredNodes().size());
-        System.out.println("Switches for 'Финютина 10': " +
-                repo.getSwitchIpsForHouse("Финютина 10"));
         PingService pingService = new PingService();
-        System.out.println("8.8.8.8: " + pingService.ping("8.8.8.8", 2));
-        System.out.println("172.17.10.21: " + pingService.ping("172.17.10.21", 2));
-        System.out.println("172.17.12.21: " + pingService.ping("172.17.12.21", 2));
+        List<Node> nodes = repo.getMonitoredNodes();
+        System.out.println("Checking " + nodes.size() + " nodes...\n");
+
+        for (Node node : nodes) {
+            boolean alive = pingService.ping(node.ip, 2);
+            System.out.printf("%-20s %-15s %s%n",
+                    node.name, node.ip, alive ? "UP" : "DOWN");
+        }
     }
 }
