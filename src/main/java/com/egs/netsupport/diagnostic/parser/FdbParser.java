@@ -1,9 +1,15 @@
 package com.egs.netsupport.diagnostic.parser;
 
+import com.egs.netsupport.diagnostic.model.FdbEntry;
+
+import java.util.ArrayList;
+import java.util.List;
+
 public class FdbParser {
 
-    public String findPort(String output, String last4MacChars) {
-        if (output == null || output.isBlank()) return null;
+    public List<FdbEntry> findAll(String output, String last4MacChars) {
+        List<FdbEntry> result = new ArrayList<>();
+        if (output == null || output.isBlank()) return result;
 
         String search = last4MacChars.toLowerCase();
 
@@ -11,15 +17,18 @@ public class FdbParser {
             String trimmed = line.trim();
             if (trimmed.isEmpty()) continue;
 
-            // ищем строку, где есть последние 4 символа MAC (без учёта регистра)
             if (trimmed.toLowerCase().contains(search)) {
-                // порт — последний столбец
                 String[] parts = trimmed.split("\\s+");
                 if (parts.length >= 4) {
-                    return parts[parts.length - 1];
+                    result.add(new FdbEntry(
+                            parts[0],           // VLAN
+                            parts[1],           // MAC
+                            parts[2],           // TYPE
+                            parts[3]            // PORT
+                    ));
                 }
             }
         }
-        return null;
+        return result;
     }
 }

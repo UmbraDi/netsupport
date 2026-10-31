@@ -26,6 +26,7 @@ public class TelnetService {
 
     public void login(String login, String password) throws IOException {
         String promt = readUntil(":", 3000);
+        //System.out.println("LOGIN PROMPT: [" + promt + "]");
         if (promt == null) throw new IOException("No login prompt");
 
         sendLine(login);
@@ -33,15 +34,19 @@ public class TelnetService {
         readUntil(":", 3000);
         sendLine(password);
 
-        String shell = readUntilAny(new String[]{"#", ">"}, 5000);
+        String shell = readUntilAny(new String[]{"#", ">"}, READ_TIMEOUT_MS);
         if (shell == null) throw new IOException("Login failed");
     }
 
     public String execute(String command) throws IOException {
+        //System.out.println("EXEC: [" + command + "]");
         sendLine(command);
         String output = readUntilAny(new String[]{"#", ">"}, READ_TIMEOUT_MS);
+        //System.out.println("RAW BEFORE CLEAN: [" + output + "]");
         if (output == null) return "";
-        return cleanOutput(output, command);
+        String cleaned = cleanOutput(output, command);
+        //System.out.println("CLEANED: [" + cleaned + "]");
+        return cleaned;
     }
 
     public void disconnect() {
@@ -53,8 +58,11 @@ public class TelnetService {
     }
 
     private void sendLine(String line) throws IOException {
-        out.write((line + "\r\n").getBytes(StandardCharsets.UTF_8));
+        //System.out.println("SEND: [" + line + "]");
+        byte[] bytes = (line + "\r\n").getBytes(StandardCharsets.UTF_8);
+        out.write(bytes);
         out.flush();
+        //System.out.println("SENT OK, bytes=" + bytes.length);
     }
 
     private String readUntil(String token, int timeoutMS) throws IOException {

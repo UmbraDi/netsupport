@@ -1,8 +1,4 @@
 {
-  "defaultCredentials": {
-    "login": "admin",
-    "password": "admin"
-  },
   "nodes": [
     {
       "ip": "172.17.10.20",

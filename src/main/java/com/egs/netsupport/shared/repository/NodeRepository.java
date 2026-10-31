@@ -1,5 +1,6 @@
 package com.egs.netsupport.shared.repository;
 
+import com.egs.netsupport.shared.model.Credentials;
 import com.egs.netsupport.shared.model.House;
 import com.egs.netsupport.shared.model.Node;
 import com.egs.netsupport.shared.model.NodesConfig;
@@ -7,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -14,9 +17,11 @@ import java.util.stream.Collectors;
 
 public class NodeRepository {
     private final NodesConfig config;
+    private final Credentials defaultCredentials;
 
     public NodeRepository() {
         this.config = loadConfig();
+        this.defaultCredentials = loadCredentials();
     }
 
     private NodesConfig loadConfig() {
@@ -30,6 +35,23 @@ public class NodeRepository {
         } catch (IOException e) {
             throw new RuntimeException("Failed to load nodes.json", e);
         }
+    }
+
+    private Credentials loadCredentials() {
+        Path path = Path.of("credentials.json");
+        if (!Files.exists(path)) {
+            return null; // работаем без кредов
+        }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(path.toFile(), Credentials.class);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load credentials.json", e);
+        }
+    }
+
+    public Credentials getDefaultCredentials() {
+        return defaultCredentials;
     }
 
     // Узлы для пинга
