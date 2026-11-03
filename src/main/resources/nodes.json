@@ -55,6 +55,34 @@
       "type": "server",
       "monitor": "true",
       "diagnostic": "false"
+    },
+    {
+      "ip": "172.17.5.14",
+      "name": "Koz-14-1",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.6.14",
+      "name": "Koz-14-2",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.7.14",
+      "name": "Koz-14-3",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
+    },
+    {
+      "ip": "172.17.8.14",
+      "name": "Koz-14-4",
+      "type": "switch",
+      "monitor": "true",
+      "diagnostic": "true"
     }
   ],
   "houses": [
@@ -69,6 +97,9 @@
     {
       "name": "Финютина 14",
       "switchIps": ["172.17.10.21", "172.17.11.21"]
+    },
+    {"name": "Козлова 14",
+      "switchIps": ["172.17.5.14", "172.17.6.14", "172.17.7.14", "172.17.8.14"]
     }
   ]
 }
