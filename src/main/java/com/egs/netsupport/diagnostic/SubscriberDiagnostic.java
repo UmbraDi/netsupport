@@ -5,6 +5,8 @@ import com.egs.netsupport.diagnostic.model.FdbEntry;
 import com.egs.netsupport.diagnostic.model.PortDetails;
 import com.egs.netsupport.diagnostic.parser.FdbParser;
 import com.egs.netsupport.diagnostic.parser.InterfaceParser;
+import com.egs.netsupport.monitoring.PortStatusService;
+import com.egs.netsupport.monitoring.model.PortError;
 import com.egs.netsupport.shared.model.Credentials;
 import com.egs.netsupport.shared.model.Node;
 import com.egs.netsupport.shared.repository.NodeRepository;
@@ -23,10 +25,14 @@ public class SubscriberDiagnostic {
     private final TelnetService telnetService;
     private final FdbParser fdbParser = new FdbParser();
     private final InterfaceParser interfaceParser = new InterfaceParser();
+    private final PortStatusService portStatusService;
 
-    public SubscriberDiagnostic(NodeRepository nodeRepository, TelnetService telnetService) {
+    public SubscriberDiagnostic(NodeRepository nodeRepository,
+                                TelnetService telnetService,
+                                PortStatusService portStatusService) {
         this.nodeRepository = nodeRepository;
         this.telnetService = telnetService;
+        this.portStatusService = portStatusService;
     }
 
     public DiagnosticResult diagnose(String houseName, String mac) {
@@ -79,6 +85,16 @@ public class SubscriberDiagnostic {
         }
 
         if (candidates.isEmpty()) {
+            // MAC не найден — проверяем err-disabled на коммутаторах дома
+            List<PortError> errors = new ArrayList<>();
+            for (String switchIp : switchIps) {
+                if (switchIp == null || switchIp.isBlank()) continue;
+                errors.addAll(portStatusService.getErrDisabledPorts(switchIp, creds));
+            }
+
+            if (!errors.isEmpty()) {
+                return DiagnosticResult.error("MAC not found. Err-disabled ports: " + errors);
+            }
             return DiagnosticResult.notFound();
         }
 
