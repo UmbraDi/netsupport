@@ -8,8 +8,8 @@
 - проверять доступность сетевых узлов (ping);
 - находить порт абонента по MAC-адресу через Telnet;
 - проверять состояние порта: линк, скорость, ошибки, output drops;
-- отслеживать порты в состоянии `err-disabled` / `disabled`;
-- присылать уведомления о проблемах.
+- находить порты в состоянии `err-disabled` с указанием причины;
+- присылать уведомления о проблемах (в планах).
 
 ## Технологии
 
@@ -18,9 +18,9 @@
 - Maven
 - Jackson (чтение JSON)
 - Apache Commons Net (Telnet)
-- JUnit 5 (тесты — в планах на этой неделе)
 
 **В планах:**
+- JUnit 5 (тесты)
 - Hibernate + PostgreSQL (хранение узлов и истории)
 - Spring Boot (REST API)
 - Email / Битрикс24 (уведомления)
@@ -30,7 +30,7 @@
 
 ### ✅ Сделано
 - [x] Структура проекта (Maven, пакеты по фичам)
-- [x] Модели данных: `Node`, `House`, `Credentials`, `NodesConfig`, `FdbEntry`, `PortDetails`, `DiagnosticResult`
+- [x] Модели данных: `Node`, `House`, `Credentials`, `NodesConfig`, `FdbEntry`, `PortDetails`, `DiagnosticResult`, `PortError`
 - [x] `NodeRepository` — чтение `nodes.json` и `credentials.json`
 - [x] `PingService` — пинг через системный `ping` (Windows/Linux)
 - [x] `NodeMonitor` — параллельный опрос по расписанию + антифлаппинг
@@ -39,20 +39,24 @@
 - [x] `FdbParser` — поиск порта по последним 4 символам MAC
 - [x] `InterfaceParser` — парсинг линка, скорости, ошибок, output drops
 - [x] `SubscriberDiagnostic` — полная диагностика абонента:
-    - поиск MAC на всех коммутаторах дома;
-    - фильтрация транковых портов (через `show interfaces status`);
-    - фильтрация по трёхзначному VLAN;
-    - парсинг `show interface` для найденного порта.
+  - поиск MAC на всех коммутаторах дома;
+  - фильтрация транковых портов (через `show interfaces status`);
+  - фильтрация по трёхзначному VLAN;
+  - парсинг `show interface` для найденного порта;
+  - подсказка при `NOT FOUND`: проверка `err-disabled` портов на коммутаторах дома.
+- [x] `PortStatusService` — универсальный сервис проверки `err-disabled` портов
+- [x] `ErrDisabledParser` — парсинг `show interfaces status err-disabled` с причиной
 
 ### 🚧 В работе
+- [ ] `PortHealthMonitor` — периодическая проверка `err-disabled` (раз в 30 мин)
 - [ ] Тесты на парсеры (JUnit) на сохранённых выводах с реальных коммутаторов
-- [ ] Обработка `--More--` в `TelnetService` (на случай, если `terminal length 0` не сработает)
+- [ ] Обработка `--More--` в `TelnetService` (fallback, если `terminal length 0` не сработает)
 
 ### 📋 Запланировано
 
 **Диагностика абонентов**
 - [ ] Интерпретация `outputDrops` (предупреждение о перегрузке буфера при порте 100M)
-- [ ] Проверка статуса порта: `err-disabled` / `disabled` в диагностике
+- [ ] Проверка статуса порта: `disabled` (вручную выключен) в диагностике
 - [ ] Автоматический подъём порта (только после согласования с техдиром)
 
 **Мониторинг**
@@ -62,7 +66,6 @@
 
 **Инвентаризация портов**
 - [ ] Проверка портов по VLAN (настроены, но не активны)
-- [ ] Периодическая проверка на `err-disabled` / `disabled` (раз в 30 мин)
 
 **Инфраструктура**
 - [ ] Переход с Telnet на SSH (JSch)
