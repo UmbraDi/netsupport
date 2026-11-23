@@ -132,6 +132,30 @@ public class NodeRepository {
         }
     }
 
+    // Проставить VLAN устройству (коммутатору) по IP
+    public int updateVlan(String ip, Integer vlan) {
+        if (ip == null || vlan == null) return 0;
+        Session session = SESSION_FACTORY.openSession();
+        try {
+            session.beginTransaction();
+            int updated = session.createMutationQuery(
+                            "update Device d set d.vlan = :vlan where d.ip = :ip")
+                    .setParameter("vlan", vlan)
+                    .setParameter("ip", ip)
+                    .executeUpdate();
+            session.getTransaction().commit();
+            return updated;
+        } catch (RuntimeException e) {
+            if (session.getTransaction().isActive()) {
+                session.getTransaction().rollback();
+            }
+            throw e;
+        } finally {
+            session.close();
+        }
+    }
+
+
     // Закрыть фабрику при остановке приложения (по желанию)
     public static void shutdown() {
         SESSION_FACTORY.close();

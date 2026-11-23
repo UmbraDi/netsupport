@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 public class TelnetService {
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
-    private static final int READ_TIMEOUT_MS = 5000;
+    private static final int READ_TIMEOUT_MS = 15000;
 
     private final TelnetClient telnet = new TelnetClient();
     private InputStream in;
