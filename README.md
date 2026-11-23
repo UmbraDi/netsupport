@@ -9,29 +9,77 @@
 - находить порт абонента по MAC-адресу через Telnet;
 - проверять состояние порта: линк, скорость, ошибки, output drops;
 - находить порты в состоянии `err-disabled` с указанием причины;
+- хранить список устройств (коммутаторы/узлы) в PostgreSQL;
 - присылать уведомления о проблемах (в планах).
 
 ## Технологии
 
-**Сейчас:**
-- Java 25
+- Java 17
 - Maven
-- Jackson (чтение JSON)
+- Hibernate ORM 7 (PostgreSQL) — хранение устройств
+- PostgreSQL JDBC driver
+- Log4j2 (логирование)
+- Jackson — чтение `credentials.json`
 - Apache Commons Net (Telnet)
 
 **В планах:**
 - JUnit 5 (тесты)
-- Hibernate + PostgreSQL (хранение узлов и истории)
 - Spring Boot (REST API)
 - Email / Битрикс24 (уведомления)
 - Веб-дашборд
+
+## Настройка
+
+### База данных
+
+Устройства хранятся в PostgreSQL в схеме `net`, таблица `devices`
+(сущность `com.egs.netsupport.shared.model.Device`).
+Схема не создаётся автоматически (`hibernate.hbm2ddl.auto=validate`) — она должна уже существовать.
+
+Параметры подключения задаются в `src/main/resources/application.properties`:
+
+```properties
+db.url=jdbc:postgresql://localhost:5432/netsupport
+db.username=${DB_USER}
+db.password=${DB_PASSWORD}
+```
+
+Значения вида `${VAR}` подставляются из переменных окружения `DB_USER` и `DB_PASSWORD`.
+Можно задать их в системе или в Run Configuration IDE (Environment variables), либо вписать логин/пароль напрямую.
+
+Остальные настройки Hibernate — в `src/main/resources/hibernate.cfg.xml`.
+
+### Учётки для Telnet
+
+Логин/пароль коммутаторов читаются из `credentials.json` в рабочей директории (в репозиторий не входит).
+
+## Структура проекта
+
+```
+com.egs.netsupport
+├── NetSupportApplication   — точка входа
+├── config                  — Jackson
+├── diagnostic              — диагностика абонента
+│   ├── model               — DiagnosticResult, FdbEntry, PortDetails
+│   └── parser              — FdbParser, InterfaceParser
+├── monitoring              — мониторинг узлов и портов
+│   ├── model               — NodeState, PortError
+│   └── parser              — ErrDisabledParser
+└── shared
+    ├── model               — Device, Node, Credentials
+    ├── repository          — NodeRepository (Hibernate)
+    └── telnet              — TelnetService
+```
 
 ## Roadmap
 
 ### ✅ Сделано
 - [x] Структура проекта (Maven, пакеты по фичам)
-- [x] Модели данных: `Node`, `House`, `Credentials`, `NodesConfig`, `FdbEntry`, `PortDetails`, `DiagnosticResult`, `PortError`
-- [x] `NodeRepository` — чтение `nodes.json` и `credentials.json`
+- [x] Модели данных: `Device`, `Node`, `Credentials`, `FdbEntry`, `PortDetails`, `DiagnosticResult`, `PortError`
+- [x] Переход на PostgreSQL: `NodeRepository` работает через Hibernate `SessionFactory` (таблица `net.devices`)
+- [x] Чтение `credentials.json`
+- [x] Параметры подключения к БД вынесены в `application.properties` (с подстановкой из переменных окружения)
+- [x] Логирование через Log4j2 (мост `log4j-jboss-logmanager` для Hibernate)
 - [x] `PingService` — пинг через системный `ping` (Windows/Linux)
 - [x] `NodeMonitor` — параллельный опрос по расписанию + антифлаппинг
 - [x] Вывод статуса узлов в консоль
@@ -67,7 +115,6 @@
 
 **Инфраструктура**
 - [ ] Переход с Telnet на SSH (JSch)
-- [ ] Переход с JSON на PostgreSQL
 - [ ] Spring Boot REST API
 - [ ] Docker
 
