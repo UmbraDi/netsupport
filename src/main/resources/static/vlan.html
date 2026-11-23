@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>VLAN по домам</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+        input { padding: 6px; font-size: 14px; width: 320px; }
+        table { border-collapse: collapse; margin-top: 16px; width: 100%; }
+        th, td { border-bottom: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+        th { background: #f5f5f5; }
+        .vlan { font-weight: bold; }
+        .none { color: #999; }
+        .city { color: #666; width: 120px; }
+        a { color: #1565c0; }
+        .hide { display: none; }
+    </style>
+</head>
+<body>
+<p><a href="/">&larr; На главную</a></p>
+<h1>VLAN по домам</h1>
+
+<input id="filter" placeholder="поиск: улица или номер дома" autocomplete="off">
+
+<table>
+    <thead>
+    <tr>
+        <th>Город</th>
+        <th>Дом</th>
+        <th>VLAN</th>
+    </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+</table>
+
+<script>
+    let houses = [];
+
+    function load() {
+        fetch('/api/vlans')
+            .then(r => r.json())
+            .then(list => {
+                houses = list;
+                render();
+            });
+    }
+
+    function render() {
+        const q = document.getElementById('filter').value.trim().toLowerCase();
+        const tbody = document.getElementById('rows');
+        tbody.innerHTML = '';
+
+        houses
+            .filter(h => !q
+                || (h.city || '').toLowerCase().includes(q)
+                || (h.house || '').toLowerCase().includes(q))
+            .forEach(h => {
+                const vlans = (h.vlans || []).join(', ');
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                          <td class="city">${h.city || ''}</td>
+                          <td>${h.house}</td>
+                          <td class="vlan ${vlans ? '' : 'none'}">${vlans || '—'}</td>
+                      `;
+                tbody.appendChild(tr);
+            });
+    }
+
+    document.getElementById('filter').oninput = render;
+
+    load();
+</script>
+</body>
+</html>

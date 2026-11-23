@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Диагностика абонента</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+        .row { margin: 10px 0; position: relative; }
+        select, input { padding: 6px; font-size: 14px; }
+        button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
+        .result { margin-top: 20px; padding: 12px; border-radius: 6px; }
+        .ok { background: #e8f5e9; border: 1px solid #81c784; }
+        .err { background: #fdecea; border: 1px solid #e57373; }
+        a { color: #1565c0; }
+
+        .suggest { position: absolute; z-index: 10; background: #fff; border: 1px solid #ccc;
+            border-top: none; max-height: 280px; overflow-y: auto; width: 300px; display: none; }
+        .suggest div { padding: 6px 10px; cursor: pointer; }
+        .suggest div:hover, .suggest div.active { background: #e3f2fd; }
+    </style>
+</head>
+<body>
+<p><a href="/">&larr; На главную</a></p>
+<h1>Диагностика абонента</h1>
+
+<div class="row">
+    <label>Город: <select id="city"></select></label>
+</div>
+
+<div class="row">
+    <label>Дом:</label>
+    <input id="house" placeholder="начните печатать: тина 10" autocomplete="off" style="width: 290px;">
+    <div id="suggest" class="suggest"></div>
+</div>
+
+<div class="row">
+    <label>MAC: <input id="mac" placeholder="полный или последние 4 символа" style="width: 290px;"></label>
+</div>
+
+<div class="row">
+    <button id="go">Проверить</button>
+</div>
+
+<div id="result"></div>
+
+<script>
+    const citySel = document.getElementById('city');
+    const houseInput = document.getElementById('house');
+    const suggestBox = document.getElementById('suggest');
+    const macInput = document.getElementById('mac');
+    const resultDiv = document.getElementById('result');
+    const goBtn = document.getElementById('go');
+
+    let allHouses = [];
+    let selectedHouse = null;
+    let activeIndex = -1;
+
+    // ---- города ----
+    fetch('/api/cities')
+        .then(r => r.json())
+        .then(list => {
+            citySel.innerHTML = '';
+            list.forEach(c => {
+                const o = document.createElement('option');
+                o.value = c;
+                o.textContent = c;
+                citySel.appendChild(o);
+            });
+            loadHouses();
+        });
+
+    // ---- дома ----
+    function loadHouses() {
+        fetch('/api/houses?city=' + encodeURIComponent(citySel.value))
+            .then(r => r.json())
+            .then(list => {
+                allHouses = list;
+                houseInput.value = '';
+                selectedHouse = null;
+                hideSuggest();
+            });
+    }
+
+    citySel.onchange = loadHouses;
+
+    // ---- автодополнение с поиском по подстроке ----
+    function showSuggest(filter) {
+        const q = filter.trim().toLowerCase();
+        const matches = allHouses.filter(h => !q || h.toLowerCase().includes(q)).slice(0, 50);
+
+        if (matches.length === 0) {
+            hideSuggest();
+            return;
+        }
+
+        suggestBox.innerHTML = '';
+        matches.forEach((h, i) => {
+            const d = document.createElement('div');
+            d.textContent = h;
+            d.dataset.value = h;
+            d.onmousedown = (e) => {
+                e.preventDefault();
+                pick(h);
+            };
+            suggestBox.appendChild(d);
+        });
+
+        activeIndex = -1;
+        suggestBox.style.display = 'block';
+    }
+
+    function hideSuggest() {
+        suggestBox.style.display = 'none';
+        suggestBox.innerHTML = '';
+        activeIndex = -1;
+    }
+
+    function pick(value) {
+        houseInput.value = value;
+        selectedHouse = value;
+        hideSuggest();
+    }
+
+    houseInput.oninput = () => {
+        selectedHouse = null;
+        showSuggest(houseInput.value);
+    };
+
+    houseInput.onfocus = () => showSuggest(houseInput.value);
+
+    houseInput.onblur = () => setTimeout(hideSuggest, 100);
+
+    houseInput.onkeydown = (e) => {
+        const items = suggestBox.querySelectorAll('div');
+        if (items.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, items.length - 1);
+            highlight(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            highlight(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeIndex >= 0) {
+                pick(items[activeIndex].dataset.value);
+            } else if (items.length === 1) {
+                pick(items[0].dataset.value);
+            }
+        } else if (e.key === 'Escape') {
+            hideSuggest();
+        }
+    };
+
+    function highlight(items) {
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+    }
+
+    // ---- диагностика ----
+    goBtn.onclick = () => {
+        const house = selectedHouse || houseInput.value.trim();
+        const mac = macInput.value.trim();
+
+        if (!house || !mac) {
+            showMessage('Выберите дом и введите MAC', true);
+            return;
+        }
+
+        const match = allHouses.find(h => h.toLowerCase() === house.toLowerCase());
+        if (!match) {
+            showMessage('Дом не найден в списке', true);
+            return;
+        }
+
+        resultDiv.className = '';
+        resultDiv.textContent = 'Проверяю...';
+        goBtn.disabled = true;
+
+        fetch(`/api/diagnose?house=${encodeURIComponent(match)}&mac=${encodeURIComponent(mac)}`)
+            .then(r => r.json())
+            .then(show)
+            .catch(e => showMessage('Ошибка: ' + e, true))
+            .finally(() => goBtn.disabled = false);
+    };
+
+    function showMessage(text, isError) {
+        resultDiv.className = 'result ' + (isError ? 'err' : '');
+        resultDiv.textContent = text;
+    }
+
+    function show(r) {
+        if (r.error) {
+            showMessage(r.error, true);
+            return;
+        }
+        if (!r.found) {
+            showMessage('MAC не найден', true);
+            return;
+        }
+        const d = r.portDetails || {};
+        resultDiv.className = 'result ok';
+        resultDiv.innerHTML = `
+                  <div>Коммутатор: <b>${r.switchIp}</b></div>
+                  <div>Порт: <b>${r.port}</b></div>
+                  <div>Линк: <b>${d.linkUp ? 'up' : 'down'}</b></div>
+                  <div>Скорость: <b>${d.speedMbps} Mbps</b></div>
+                  <div>CRC: ${d.crcErrors}, input errors: ${d.inputErrors}</div>
+                  <div>output errors: ${d.outputErrors}, collisions: ${d.collisions}, drops: ${d.outputDrops}</div>
+              `;
+    }
+</script>
+</body>
+</html>
