@@ -10,17 +10,18 @@
 - проверять состояние порта: линк, скорость, ошибки, output drops;
 - находить порты в состоянии `err-disabled` с указанием причины;
 - хранить список устройств (коммутаторы/узлы) в PostgreSQL;
+- веб-интерфейс: диагностика абонента по MAC и просмотр VLAN по домам.
 - присылать уведомления о проблемах (в планах).
 
 ## Технологии
 
-- Java 17
-- Maven
-- Hibernate ORM 7 (PostgreSQL) — хранение устройств
-- PostgreSQL JDBC driver
-- Log4j2 (логирование)
-- Jackson — чтение `credentials.json`
-- Apache Commons Net (Telnet)
+  - Java 17
+  - Maven
+  - Spring Boot 3 (web, Spring Data JPA)
+  - Hibernate ORM (через Spring Data JPA)
+  - PostgreSQL
+  - Jackson
+  - Apache Commons Net (Telnet)
 
 **В планах:**
 - JUnit 5 (тесты)
@@ -28,47 +29,56 @@
 - Email / Битрикс24 (уведомления)
 - Веб-дашборд
 
-## Настройка
+  ## Настройка
 
-### База данных
+  ### База данных
 
-Устройства хранятся в PostgreSQL в схеме `net`, таблица `devices`
-(сущность `com.egs.netsupport.shared.model.Device`).
-Схема не создаётся автоматически (`hibernate.hbm2ddl.auto=validate`) — она должна уже существовать.
+  Устройства хранятся в PostgreSQL в схеме `net`, таблица `devices`
+  (сущность `com.egs.netsupport.shared.model.Device`).
+  Схема не создаётся автоматически (`ddl-auto=validate`) — она должна уже существовать.
 
-Параметры подключения задаются в `src/main/resources/application.properties`:
+  Параметры подключения задаются в `src/main/resources/application.properties`:properties
+  spring.datasource.url=${db.url}
+  spring.datasource.username=${DBUSER}
+  spring.datasource.password=${DBPASSWORD}
 
-```properties
-db.url=jdbc:postgresql://localhost:5432/netsupport
-db.username=${DB_USER}
-db.password=${DB_PASSWORD}
-```
+  db.url=jdbc:postgresql://localhost:5432/netsupport
+  Логин и пароль берутся из переменных окружения `DB_USER` и `DB_PASSWORD`.
+  Для локального запуска их можно задать в Run Configuration IDE (Environment variables) или в системе.
 
-Значения вида `${VAR}` подставляются из переменных окружения `DB_USER` и `DB_PASSWORD`.
-Можно задать их в системе или в Run Configuration IDE (Environment variables), либо вписать логин/пароль напрямую.
+  ### Учётки для Telnet
 
-Остальные настройки Hibernate — в `src/main/resources/hibernate.cfg.xml`.
+  Логин/пароль коммутаторов читаются из `credentials.json` в рабочей директории (в репозиторий не входит).
 
-### Учётки для Telnet
+  ### Запускbash
+  mvn spring-boot:run
+  Приложение поднимается на `http://localhost:8080`.
 
-Логин/пароль коммутаторов читаются из `credentials.json` в рабочей директории (в репозиторий не входит).
+  ## Веб-интерфейс
+
+  - `/` — главная
+  - `/diagnostic.html` — диагностика абонента: выбор города, дома (с автодополнением) и MAC
+    (полный или последние 4 символа)
+  - `/vlan.html` — VLAN по домам: все VLAN'ы, найденные на коммутаторах дома
 
 ## Структура проекта
 
 ```
-com.egs.netsupport
-├── NetSupportApplication   — точка входа
-├── config                  — Jackson
-├── diagnostic              — диагностика абонента
-│   ├── model               — DiagnosticResult, FdbEntry, PortDetails
-│   └── parser              — FdbParser, InterfaceParser
-├── monitoring              — мониторинг узлов и портов
-│   ├── model               — NodeState, PortError
-│   └── parser              — ErrDisabledParser
-└── shared
-    ├── model               — Device, Node, Credentials
-    ├── repository          — NodeRepository (Hibernate)
-    └── telnet              — TelnetService
+  com.egs.netsupport
+  ├── NetSupportApplication   — Spring Boot точка входа
+  ├── web                     — REST API (ApiController), DTO
+  ├── config                  — Jackson
+  ├── diagnostic              — диагностика абонента
+  │   ├── model               — DiagnosticResult, FdbEntry, PortDetails
+  │   └── parser              — FdbParser, InterfaceParser, SubscriberVlanParser
+  ├── monitoring              — мониторинг узлов, портов, VLAN
+  │   ├── model               — NodeState, PortError
+  │   └── parser              — ErrDisabledParser
+  └── shared
+      ├── model               — Device, Node, Credentials
+      ├── repository          — DeviceRepository (Spring Data JPA)
+      └── telnet              — TelnetService
+  Статика: `src/main/resources/static/{index,diagnostic,vlan}.html`
 ```
 
 ## Roadmap
@@ -95,6 +105,9 @@ com.egs.netsupport
 - [x] `PortStatusService` — универсальный сервис проверки `err-disabled` портов
 - [x] `ErrDisabledParser` — парсинг `show interfaces status err-disabled` с причиной
 - [x] `PortHealthMonitor` — периодическая проверка `err-disabled` (раз в 30 мин)
+- [x] Переход на Spring Boot + Spring Data JPA
+- [x] Веб-интерфейс: главная, диагностика абонента, VLAN по домам
+- [x] Сборщик VLAN с коммутаторов (`VlanService`)
 
 ### 🚧 В работе
 - [ ] Тесты на парсеры (JUnit) на сохранённых выводах с реальных коммутаторов
@@ -115,7 +128,6 @@ com.egs.netsupport
 
 **Инфраструктура**
 - [ ] Переход с Telnet на SSH (JSch)
-- [ ] Spring Boot REST API
 - [ ] Docker
 
 ### 💡 Идеи на будущее
