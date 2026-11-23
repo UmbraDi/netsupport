@@ -8,31 +8,44 @@ import com.egs.netsupport.diagnostic.parser.InterfaceParser;
 import com.egs.netsupport.monitoring.PortStatusService;
 import com.egs.netsupport.monitoring.model.PortError;
 import com.egs.netsupport.shared.model.Credentials;
-import com.egs.netsupport.shared.model.Node;
-import com.egs.netsupport.shared.repository.NodeRepository;
+import com.egs.netsupport.shared.model.Device;
+import com.egs.netsupport.shared.repository.DeviceRepository;
 import com.egs.netsupport.shared.telnet.TelnetService;
+import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
+@Service
 public class SubscriberDiagnostic {
 
-    private final NodeRepository nodeRepository;
-    private final TelnetService telnetService;
+    private final DeviceRepository deviceRepository;
+    private final PortStatusService portStatusService;
     private final FdbParser fdbParser = new FdbParser();
     private final InterfaceParser interfaceParser = new InterfaceParser();
-    private final PortStatusService portStatusService;
+    private final Credentials credentials;
 
-    public SubscriberDiagnostic(NodeRepository nodeRepository,
-                                TelnetService telnetService,
+    public SubscriberDiagnostic(DeviceRepository deviceRepository,
                                 PortStatusService portStatusService) {
-        this.nodeRepository = nodeRepository;
-        this.telnetService = telnetService;
+        this.deviceRepository = deviceRepository;
         this.portStatusService = portStatusService;
+        this.credentials = loadCredentials();
+    }
+
+    private Credentials loadCredentials() {
+        Path path = Path.of("credentials.json");
+        if (!Files.exists(path)) {
+            return null;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(path.toFile(), Credentials.class);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load credentials.json", e);
+        }
     }
 
     public DiagnosticResult diagnose(String houseName, String mac) {
@@ -42,37 +55,36 @@ public class SubscriberDiagnostic {
         }
         String last4 = cleanMac.substring(cleanMac.length() - 4).toLowerCase();
 
-        List<String> switchIps = nodeRepository.getSwitchIpsForHouse(houseName);
+        List<String> switchIps = switchIpsForHouse(houseName);
         if (switchIps.isEmpty()) {
             return DiagnosticResult.error("House not found: " + houseName);
         }
 
-        Credentials creds = nodeRepository.getDefaultCredentials();
-        if (creds == null) {
+        if (credentials == null) {
             return DiagnosticResult.error("credentials.json not found");
         }
 
-        // 1. Собираем все записи со всех коммутаторов
+        // 1. Собираем все записи со всех коммутаторов дома
         List<SwitchEntry> allEntries = new ArrayList<>();
 
         for (String switchIp : switchIps) {
             if (switchIp == null || switchIp.isBlank()) continue;
+            TelnetService telnet = new TelnetService();
             try {
-                telnetService.connect(switchIp, 23);
-                telnetService.login(creds.login, creds.password);
-                telnetService.execute("terminal length 0");
+                telnet.connect(switchIp, 23);
+                telnet.login(credentials.login, credentials.password);
+                telnet.execute("terminal length 0");
 
-                String fdbOutput = telnetService.execute("show mac address-table | include " + last4);
+                String fdbOutput = telnet.execute("show mac address-table | include " + last4);
                 List<FdbEntry> entries = fdbParser.findAll(fdbOutput, last4);
 
-                // запоминаем, с какого коммутатора пришла каждая запись
                 for (FdbEntry e : entries) {
                     allEntries.add(new SwitchEntry(switchIp, e));
                 }
             } catch (IOException e) {
                 System.out.println("IOException on " + switchIp + ": " + e.getMessage());
             } finally {
-                telnetService.disconnect();
+                telnet.disconnect();
             }
         }
 
@@ -80,7 +92,7 @@ public class SubscriberDiagnostic {
         List<SwitchEntry> candidates = new ArrayList<>();
         for (SwitchEntry se : allEntries) {
             if (!se.entry.isSubscriberVlan()) continue;
-            if (isTrunkPort(se.switchIp, se.entry.port, creds)) continue;
+            if (isTrunkPort(se.switchIp, se.entry.port)) continue;
             candidates.add(se);
         }
 
@@ -89,7 +101,7 @@ public class SubscriberDiagnostic {
             List<PortError> errors = new ArrayList<>();
             for (String switchIp : switchIps) {
                 if (switchIp == null || switchIp.isBlank()) continue;
-                errors.addAll(portStatusService.getErrDisabledPorts(switchIp, creds));
+                errors.addAll(portStatusService.getErrDisabledPorts(switchIp, credentials));
             }
 
             if (!errors.isEmpty()) {
@@ -100,12 +112,13 @@ public class SubscriberDiagnostic {
 
         // 3. Берём первую подходящую запись и парсим show interface
         SwitchEntry chosen = candidates.get(0);
+        TelnetService telnet = new TelnetService();
         try {
-            telnetService.connect(chosen.switchIp, 23);
-            telnetService.login(creds.login, creds.password);
-            telnetService.execute("terminal length 0");
+            telnet.connect(chosen.switchIp, 23);
+            telnet.login(credentials.login, credentials.password);
+            telnet.execute("terminal length 0");
 
-            String ifOutput = telnetService.execute("show interface " + chosen.entry.port);
+            String ifOutput = telnet.execute("show interface " + chosen.entry.port);
             PortDetails details = interfaceParser.parse(ifOutput);
 
             DiagnosticResult result = new DiagnosticResult();
@@ -117,28 +130,58 @@ public class SubscriberDiagnostic {
         } catch (IOException e) {
             return DiagnosticResult.error("Failed to get interface details: " + e.getMessage());
         } finally {
-            telnetService.disconnect();
+            telnet.disconnect();
         }
     }
 
     /**
-     * Проверяет, является ли порт транковым.
-     * Подключается к коммутатору (если ещё не подключён), выполняет show interfaces <port> status
-     * и смотрит, есть ли в выводе "trunk".
+     * IP коммутаторов дома. "Финютина 10" -> street='Финютина', houseNum='10'.
      */
-    private boolean isTrunkPort(String switchIp, String port, Credentials creds) {
-        try {
-            telnetService.connect(switchIp, 23);
-            telnetService.login(creds.login, creds.password);
-            telnetService.execute("terminal length 0");
+    private List<String> switchIpsForHouse(String houseName) {
+        if (houseName == null || houseName.isBlank()) {
+            return List.of();
+        }
+        String trimmed = houseName.trim();
+        int lastSpace = trimmed.lastIndexOf(' ');
 
-            String statusOutput = telnetService.execute("show interfaces " + port + " status");
+        List<Device> switches = deviceRepository.findByTypeAndIpIsNotNullOrderByIp("switch");
+
+        if (lastSpace <= 0) {
+            // не смогли разобрать — ищем только по houseNum
+            return switches.stream()
+                    .filter(d -> trimmed.equalsIgnoreCase(d.houseNum))
+                    .map(d -> d.ip)
+                    .toList();
+        }
+
+        String street = trimmed.substring(0, lastSpace).trim();
+        String houseNum = trimmed.substring(lastSpace + 1).trim();
+
+        return switches.stream()
+                .filter(d -> d.street != null
+                        && d.street.equalsIgnoreCase(street)
+                        && houseNum.equalsIgnoreCase(d.houseNum))
+                .map(d -> d.ip)
+                .toList();
+    }
+
+    /**
+     * Проверяет, является ли порт транковым.
+     */
+    private boolean isTrunkPort(String switchIp, String port) {
+        TelnetService telnet = new TelnetService();
+        try {
+            telnet.connect(switchIp, 23);
+            telnet.login(credentials.login, credentials.password);
+            telnet.execute("terminal length 0");
+
+            String statusOutput = telnet.execute("show interfaces " + port + " status");
             return statusOutput.toLowerCase().contains("trunk");
         } catch (IOException e) {
             System.out.println("IOException checking trunk on " + switchIp + " " + port + ": " + e.getMessage());
             return false;
         } finally {
-            telnetService.disconnect();
+            telnet.disconnect();
         }
     }
 
