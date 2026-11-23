@@ -1,6 +1,7 @@
 package com.egs.netsupport.monitoring;
 
 import com.egs.netsupport.monitoring.model.NodeState;
+import com.egs.netsupport.shared.model.Device;
 import com.egs.netsupport.shared.model.Node;
 import com.egs.netsupport.shared.repository.NodeRepository;
 
@@ -27,7 +28,7 @@ public class NodeMonitor {
     }
 
     public void start() {
-        for (Node node: nodeRepository.getMonitoredNodes()) {
+        for (Device node: nodeRepository.getMonitoredNodes()) {
             states.put(node.ip, new NodeState(node.ip));
         }
         scheduler.scheduleAtFixedRate(this::checkAllNodes, 0, CHECK_INTERVAL_SEC, TimeUnit.SECONDS);
@@ -39,10 +40,10 @@ public class NodeMonitor {
     }
 
     private void checkAllNodes() {
-        List<Node> nodes = nodeRepository.getMonitoredNodes();
+        List<Device> nodes = nodeRepository.getMonitoredNodes();
 
         List<Future<?>> futures = new java.util.ArrayList<>();
-        for (Node node : nodes) {
+        for (Device node : nodes) {
             futures.add(pingPool.submit(() -> checkNode(node)));
         }
 
@@ -58,7 +59,7 @@ public class NodeMonitor {
         }
     }
 
-    private void checkNode(Node node) {
+    private void checkNode(Device node) {
         boolean alive = pingService.ping(node.ip, PING_TIMEOUT_SEC);
         NodeState state = states.get(node.ip);
         if (state == null) return;
@@ -80,11 +81,11 @@ public class NodeMonitor {
         }
     }
 
-    private void onNodeDown(Node node) {
+    private void onNodeDown(Device node) {
         System.out.println("[ALERT] Node DOWN: " + node.name + " (" + node.ip + ")");
     }
 
-    private void onNodeUp(Node node) {
+    private void onNodeUp(Device node) {
         System.out.println("[RECOVERY] Node UP: " + node.name + " (" + node.ip + ")");
     }
 

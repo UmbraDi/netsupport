@@ -2,6 +2,7 @@ package com.egs.netsupport.monitoring;
 
 import com.egs.netsupport.monitoring.model.PortError;
 import com.egs.netsupport.shared.model.Credentials;
+import com.egs.netsupport.shared.model.Device;
 import com.egs.netsupport.shared.model.Node;
 import com.egs.netsupport.shared.repository.NodeRepository;
 
@@ -43,13 +44,13 @@ public class PortHealthMonitor {
             return;
         }
 
-        List<Node> switches = nodeRepository.getMonitoredNodes().stream()
+        List<Device> switches = nodeRepository.getMonitoredNodes().stream()
                 .filter(n -> "switch".equals(n.type))
                 .toList();
 
         System.out.println("[PortHealth] Checking " + switches.size() + " switches...");
 
-        for (Node sw : switches) {
+        for (Device sw : switches) {
             List<PortError> errors = portStatusService.getErrDisabledPorts(sw.ip, creds);
             if (!errors.isEmpty()) {
                 System.out.println("[ALERT] " + sw.name + " (" + sw.ip + ") err-disabled: " + errors);
