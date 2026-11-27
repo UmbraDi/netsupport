@@ -6,11 +6,13 @@ import com.egs.netsupport.diagnostic.model.PortDetails;
 import com.egs.netsupport.diagnostic.parser.FdbParser;
 import com.egs.netsupport.diagnostic.parser.InterfaceParser;
 import com.egs.netsupport.monitoring.PortStatusService;
-import com.egs.netsupport.monitoring.model.PortError;
+import com.egs.netsupport.monitoring.model.ErrDisabledDto;
 import com.egs.netsupport.shared.model.Credentials;
 import com.egs.netsupport.shared.model.Device;
 import com.egs.netsupport.shared.repository.DeviceRepository;
 import com.egs.netsupport.shared.telnet.TelnetService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -21,6 +23,8 @@ import java.util.List;
 
 @Service
 public class SubscriberDiagnostic {
+
+    private static final Logger log = LoggerFactory.getLogger(SubscriberDiagnostic.class);
 
     private final DeviceRepository deviceRepository;
     private final PortStatusService portStatusService;
@@ -48,16 +52,16 @@ public class SubscriberDiagnostic {
         }
     }
 
-    public DiagnosticResult diagnose(String houseName, String mac) {
-        String cleanMac = mac.replaceAll("[.:-]", "");
+    public DiagnosticResult diagnose(String city, String street, String houseNum, String mac) {
+        String cleanMac = mac == null ? "" : mac.replaceAll("[.:-]", "");
         if (cleanMac.length() < 4) {
             return DiagnosticResult.error("Invalid MAC: " + mac);
         }
         String last4 = cleanMac.substring(cleanMac.length() - 4).toLowerCase();
 
-        List<String> switchIps = switchIpsForHouse(houseName);
-        if (switchIps.isEmpty()) {
-            return DiagnosticResult.error("House not found: " + houseName);
+        List<Device> switches = switchesForHouse(city, street, houseNum);
+        if (switches.isEmpty()) {
+            return DiagnosticResult.error("House not found: " + street + " " + houseNum);
         }
 
         if (credentials == null) {
@@ -67,11 +71,11 @@ public class SubscriberDiagnostic {
         // 1. Собираем все записи со всех коммутаторов дома
         List<SwitchEntry> allEntries = new ArrayList<>();
 
-        for (String switchIp : switchIps) {
-            if (switchIp == null || switchIp.isBlank()) continue;
+        for (Device sw : switches) {
+            if (sw.ip == null || sw.ip.isBlank()) continue;
             TelnetService telnet = new TelnetService();
             try {
-                telnet.connect(switchIp, 23);
+                telnet.connect(sw.ip, 23);
                 telnet.login(credentials.login, credentials.password);
                 telnet.execute("terminal length 0");
 
@@ -79,10 +83,10 @@ public class SubscriberDiagnostic {
                 List<FdbEntry> entries = fdbParser.findAll(fdbOutput, last4);
 
                 for (FdbEntry e : entries) {
-                    allEntries.add(new SwitchEntry(switchIp, e));
+                    allEntries.add(new SwitchEntry(sw.ip, e));
                 }
             } catch (IOException e) {
-                System.out.println("IOException on " + switchIp + ": " + e.getMessage());
+                log.warn("IOException on {}: {}", sw.ip, e.getMessage());
             } finally {
                 telnet.disconnect();
             }
@@ -98,12 +102,7 @@ public class SubscriberDiagnostic {
 
         if (candidates.isEmpty()) {
             // MAC не найден — проверяем err-disabled на коммутаторах дома
-            List<PortError> errors = new ArrayList<>();
-            for (String switchIp : switchIps) {
-                if (switchIp == null || switchIp.isBlank()) continue;
-                errors.addAll(portStatusService.getErrDisabledPorts(switchIp, credentials));
-            }
-
+            List<ErrDisabledDto> errors = portStatusService.findErrDisabled(switches);
             if (!errors.isEmpty()) {
                 return DiagnosticResult.error("MAC not found. Err-disabled ports: " + errors);
             }
@@ -135,34 +134,16 @@ public class SubscriberDiagnostic {
     }
 
     /**
-     * IP коммутаторов дома. "Финютина 10" -> street='Финютина', houseNum='10'.
+     * Коммутаторы дома по городу/улице/номеру дома.
      */
-    private List<String> switchIpsForHouse(String houseName) {
-        if (houseName == null || houseName.isBlank()) {
+    private List<Device> switchesForHouse(String city, String street, String houseNum) {
+        if (street == null || street.isBlank() || houseNum == null || houseNum.isBlank()) {
             return List.of();
         }
-        String trimmed = houseName.trim();
-        int lastSpace = trimmed.lastIndexOf(' ');
-
-        List<Device> switches = deviceRepository.findByTypeAndIpIsNotNullOrderByIp("switch");
-
-        if (lastSpace <= 0) {
-            // не смогли разобрать — ищем только по houseNum
-            return switches.stream()
-                    .filter(d -> trimmed.equalsIgnoreCase(d.houseNum))
-                    .map(d -> d.ip)
-                    .toList();
-        }
-
-        String street = trimmed.substring(0, lastSpace).trim();
-        String houseNum = trimmed.substring(lastSpace + 1).trim();
-
-        return switches.stream()
-                .filter(d -> d.street != null
-                        && d.street.equalsIgnoreCase(street)
-                        && houseNum.equalsIgnoreCase(d.houseNum))
-                .map(d -> d.ip)
-                .toList();
+        return deviceRepository.findSwitches(
+                (city == null || city.isBlank()) ? null : city.trim(),
+                street.trim(),
+                houseNum.trim());
     }
 
     /**
@@ -178,7 +159,7 @@ public class SubscriberDiagnostic {
             String statusOutput = telnet.execute("show interfaces " + port + " status");
             return statusOutput.toLowerCase().contains("trunk");
         } catch (IOException e) {
-            System.out.println("IOException checking trunk on " + switchIp + " " + port + ": " + e.getMessage());
+            log.warn("IOException checking trunk on {} {}: {}", switchIp, port, e.getMessage());
             return false;
         } finally {
             telnet.disconnect();

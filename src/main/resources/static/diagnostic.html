@@ -6,7 +6,10 @@
     <style>
         body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
         .row { margin: 10px 0; position: relative; }
-        select, input { padding: 6px; font-size: 14px; }
+        .row.inline { display: flex; gap: 12px; align-items: flex-end; }
+        .field { position: relative; }
+        label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+        select, input { padding: 6px; font-size: 14px; box-sizing: border-box; }
         button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
         .result { margin-top: 20px; padding: 12px; border-radius: 6px; }
         .ok { background: #e8f5e9; border: 1px solid #81c784; }
@@ -14,7 +17,8 @@
         a { color: #1565c0; }
 
         .suggest { position: absolute; z-index: 10; background: #fff; border: 1px solid #ccc;
-            border-top: none; max-height: 280px; overflow-y: auto; width: 300px; display: none; }
+            border-top: none; max-height: 280px; overflow-y: auto; width: 100%; display: none;
+            box-sizing: border-box; }
         .suggest div { padding: 6px 10px; cursor: pointer; }
         .suggest div:hover, .suggest div.active { background: #e3f2fd; }
     </style>
@@ -24,17 +28,26 @@
 <h1>Диагностика абонента</h1>
 
 <div class="row">
-    <label>Город: <select id="city"></select></label>
+    <label>Город</label>
+    <select id="city"></select>
+</div>
+
+<div class="row inline">
+    <div class="field">
+        <label>Улица</label>
+        <input id="street" placeholder="выберите улицу" autocomplete="off" style="width: 290px;">
+        <div id="streetSuggest" class="suggest"></div>
+    </div>
+    <div class="field">
+        <label>Дом</label>
+        <input id="house" placeholder="выберите дом" autocomplete="off" style="width: 110px;" disabled>
+        <div id="houseSuggest" class="suggest"></div>
+    </div>
 </div>
 
 <div class="row">
-    <label>Дом:</label>
-    <input id="house" placeholder="начните печатать: тина 10" autocomplete="off" style="width: 290px;">
-    <div id="suggest" class="suggest"></div>
-</div>
-
-<div class="row">
-    <label>MAC: <input id="mac" placeholder="полный или последние 4 символа" style="width: 290px;"></label>
+    <label>MAC</label>
+    <input id="mac" placeholder="полный или последние 4 символа" style="width: 290px;">
 </div>
 
 <div class="row">
@@ -45,15 +58,18 @@
 
 <script>
     const citySel = document.getElementById('city');
+    const streetInput = document.getElementById('street');
+    const streetSuggest = document.getElementById('streetSuggest');
     const houseInput = document.getElementById('house');
-    const suggestBox = document.getElementById('suggest');
+    const houseSuggest = document.getElementById('houseSuggest');
     const macInput = document.getElementById('mac');
     const resultDiv = document.getElementById('result');
     const goBtn = document.getElementById('go');
 
-    let allHouses = [];
+    let streets = [];
+    let houseNums = [];
+    let selectedStreet = null;
     let selectedHouse = null;
-    let activeIndex = -1;
 
     // ---- города ----
     fetch('/api/cities')
@@ -66,111 +82,126 @@
                 o.textContent = c;
                 citySel.appendChild(o);
             });
-            loadHouses();
+            loadStreets();
         });
 
-    // ---- дома ----
-    function loadHouses() {
-        fetch('/api/houses?city=' + encodeURIComponent(citySel.value))
+    citySel.onchange = loadStreets;
+
+    // ---- улицы ----
+    function loadStreets() {
+        fetch('/api/streets?city=' + encodeURIComponent(citySel.value))
             .then(r => r.json())
             .then(list => {
-                allHouses = list;
-                houseInput.value = '';
-                selectedHouse = null;
-                hideSuggest();
+                streets = list;
+                resetStreet();
             });
     }
 
-    citySel.onchange = loadHouses;
-
-    // ---- автодополнение с поиском по подстроке ----
-    function showSuggest(filter) {
-        const q = filter.trim().toLowerCase();
-        const matches = allHouses.filter(h => !q || h.toLowerCase().includes(q)).slice(0, 50);
-
-        if (matches.length === 0) {
-            hideSuggest();
-            return;
-        }
-
-        suggestBox.innerHTML = '';
-        matches.forEach((h, i) => {
-            const d = document.createElement('div');
-            d.textContent = h;
-            d.dataset.value = h;
-            d.onmousedown = (e) => {
-                e.preventDefault();
-                pick(h);
-            };
-            suggestBox.appendChild(d);
-        });
-
-        activeIndex = -1;
-        suggestBox.style.display = 'block';
+    function resetStreet() {
+        streetInput.value = '';
+        selectedStreet = null;
+        hideSuggest(streetSuggest);
+        resetHouse();
     }
 
-    function hideSuggest() {
-        suggestBox.style.display = 'none';
-        suggestBox.innerHTML = '';
-        activeIndex = -1;
-    }
-
-    function pick(value) {
-        houseInput.value = value;
-        selectedHouse = value;
-        hideSuggest();
-    }
-
-    houseInput.oninput = () => {
+    function resetHouse() {
+        houseInput.value = '';
+        houseInput.disabled = true;
         selectedHouse = null;
-        showSuggest(houseInput.value);
-    };
+        houseNums = [];
+        hideSuggest(houseSuggest);
+    }
 
-    houseInput.onfocus = () => showSuggest(houseInput.value);
+    // ---- общий автодополнятор (ввод разрешён только из списка) ----
+    function setupAutocomplete(input, box, getList, onPick) {
+        let activeIndex = -1;
 
-    houseInput.onblur = () => setTimeout(hideSuggest, 100);
-
-    houseInput.onkeydown = (e) => {
-        const items = suggestBox.querySelectorAll('div');
-        if (items.length === 0) return;
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            activeIndex = Math.min(activeIndex + 1, items.length - 1);
-            highlight(items);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            activeIndex = Math.max(activeIndex - 1, 0);
-            highlight(items);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (activeIndex >= 0) {
-                pick(items[activeIndex].dataset.value);
-            } else if (items.length === 1) {
-                pick(items[0].dataset.value);
-            }
-        } else if (e.key === 'Escape') {
-            hideSuggest();
+        function show() {
+            const q = input.value.trim().toLowerCase();
+            const matches = getList().filter(v => !q || v.toLowerCase().includes(q)).slice(0, 50);
+            box.innerHTML = '';
+            if (matches.length === 0) { hideSuggest(box); return; }
+            matches.forEach(v => {
+                const d = document.createElement('div');
+                d.textContent = v;
+                d.dataset.value = v;
+                d.onmousedown = (e) => { e.preventDefault(); onPick(v); };
+                box.appendChild(d);
+            });
+            activeIndex = -1;
+            box.style.display = 'block';
         }
-    };
 
-    function highlight(items) {
-        items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+        input.oninput = () => { onPick(null); show(); };
+        input.onfocus = show;
+        input.onblur = () => setTimeout(() => hideSuggest(box), 100);
+        input.onkeydown = (e) => {
+            const items = box.querySelectorAll('div');
+            if (items.length === 0) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIndex = Math.min(activeIndex + 1, items.length - 1);
+                items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIndex = Math.max(activeIndex - 1, 0);
+                items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const pick = activeIndex >= 0 ? items[activeIndex] : (items.length === 1 ? items[0] : null);
+                if (pick) onPick(pick.dataset.value);
+            } else if (e.key === 'Escape') {
+                hideSuggest(box);
+            }
+        };
+    }
+
+    function hideSuggest(box) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+    }
+
+    // улица: выбрали из списка -> грузим дома
+    setupAutocomplete(streetInput, streetSuggest, () => streets, (value) => {
+        if (value == null) { resetStreet(); return; }
+        selectedStreet = value;
+        streetInput.value = value;
+        hideSuggest(streetSuggest);
+        loadHouseNums();
+    });
+
+    // дом: выбрали из списка
+    setupAutocomplete(houseInput, houseSuggest, () => houseNums, (value) => {
+        if (value == null) { selectedHouse = null; houseInput.value = ''; return; }
+        selectedHouse = value;
+        houseInput.value = value;
+        hideSuggest(houseSuggest);
+    });
+
+    function loadHouseNums() {
+        fetch('/api/house-nums?city=' + encodeURIComponent(citySel.value)
+            + '&street=' + encodeURIComponent(selectedStreet))
+            .then(r => r.json())
+            .then(list => {
+                houseNums = list;
+                houseInput.value = '';
+                houseInput.disabled = false;
+                selectedHouse = null;
+            });
     }
 
     // ---- диагностика ----
     goBtn.onclick = () => {
-        const house = selectedHouse || houseInput.value.trim();
+        const street = selectedStreet;
+        const houseNum = selectedHouse;
         const mac = macInput.value.trim();
 
-        if (!house || !mac) {
-            showMessage('Выберите дом и введите MAC', true);
+        if (!street || !houseNum) {
+            showMessage('Выберите улицу и дом из списка', true);
             return;
         }
-
-        const match = allHouses.find(h => h.toLowerCase() === house.toLowerCase());
-        if (!match) {
-            showMessage('Дом не найден в списке', true);
+        if (!mac) {
+            showMessage('Введите MAC', true);
             return;
         }
 
@@ -178,10 +209,22 @@
         resultDiv.textContent = 'Проверяю...';
         goBtn.disabled = true;
 
-        fetch(`/api/diagnose?house=${encodeURIComponent(match)}&mac=${encodeURIComponent(mac)}`)
-            .then(r => r.json())
+        const url = `/api/diagnose?city=${encodeURIComponent(citySel.value)}`
+            + `&street=${encodeURIComponent(street)}`
+            + `&houseNum=${encodeURIComponent(houseNum)}`
+            + `&mac=${encodeURIComponent(mac)}`;
+
+        fetch(url)
+            .then(r => r.json()
+                .catch(() => ({}))
+                .then(body => {
+                    if (!r.ok) {
+                        throw new Error(body.error || ('HTTP ' + r.status));
+                    }
+                    return body;
+                }))
             .then(show)
-            .catch(e => showMessage('Ошибка: ' + e, true))
+            .catch(e => showMessage('Ошибка: ' + e.message, true))
             .finally(() => goBtn.disabled = false);
     };
 

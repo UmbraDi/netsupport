@@ -24,15 +24,39 @@ public interface DeviceRepository extends JpaRepository<Device, Integer> {
     List<String> findAllCities();
 
     @Query("""
-          select distinct concat(d.street, ' ', d.houseNum)
+          select distinct d.street
           from Device d
           where d.type = 'switch'
             and d.street is not null
+            and (:city is null or d.city = :city)
+          order by d.street
+          """)
+    List<String> findStreets(@Param("city") String city);
+
+    @Query("""
+          select distinct d.houseNum
+          from Device d
+          where d.type = 'switch'
+            and d.street = :street
             and d.houseNum is not null
             and (:city is null or d.city = :city)
-          order by concat(d.street, ' ', d.houseNum)
+          order by d.houseNum
           """)
-    List<String> findHouses(@Param("city") String city);
+    List<String> findHouseNums(@Param("city") String city, @Param("street") String street);
+
+    @Query("""
+          select d
+          from Device d
+          where d.type = 'switch'
+            and d.ip is not null
+            and (:city is null or d.city = :city)
+            and (:street is null or d.street = :street)
+            and (:houseNum is null or d.houseNum = :houseNum)
+          order by d.ip
+          """)
+    List<Device> findSwitches(@Param("city") String city,
+                              @Param("street") String street,
+                              @Param("houseNum") String houseNum);
 
     @Query("""
           select d.city, d.street, d.houseNum, d.vlan

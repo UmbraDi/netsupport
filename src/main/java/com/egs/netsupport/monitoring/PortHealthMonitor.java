@@ -1,49 +1,39 @@
 package com.egs.netsupport.monitoring;
 
+import com.egs.netsupport.monitoring.model.ErrDisabledDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+/**
+ * Периодический поиск err-disabled портов на всех коммутаторах.
+ * Включается свойством app.monitoring.errdisabled.enabled=true.
+ */
+@Component
+@ConditionalOnProperty(name = "app.monitoring.errdisabled.enabled", havingValue = "true")
 public class PortHealthMonitor {
-//    private final NodeRepository nodeRepository;
-//    private final PortStatusService portStatusService;
-//    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-//
-//    private static final int CHECK_INTERVAL_MIN = 30;
-//    private static final int SWITCH_POOL_SIZE = 5;
-//
-//    public PortHealthMonitor(NodeRepository nodeRepository, PortStatusService portStatusService) {
-//        this.nodeRepository = nodeRepository;
-//        this.portStatusService = portStatusService;
-//    }
-//
-//    public void start() {
-//        scheduler.scheduleAtFixedRate(
-//                this::checkAllSwitches,
-//                0,
-//                CHECK_INTERVAL_MIN,
-//                TimeUnit.MINUTES
-//        );
-//    }
-//
-//    public void stop() {
-//        scheduler.shutdown();
-//    }
-//
-//    private void checkAllSwitches() {
-//        Credentials creds = nodeRepository.getDefaultCredentials();
-//        if (creds == null) {
-//            System.out.println("[PortHealth] credentials.json not found");
-//            return;
-//        }
-//
-//        List<Device> switches = nodeRepository.getMonitoredNodes().stream()
-//                .filter(n -> "switch".equals(n.type))
-//                .toList();
-//
-//        System.out.println("[PortHealth] Checking " + switches.size() + " switches...");
-//
-//        for (Device sw : switches) {
-//            List<PortError> errors = portStatusService.getErrDisabledPorts(sw.ip, creds);
-//            if (!errors.isEmpty()) {
-//                System.out.println("[ALERT] " + sw.name + " (" + sw.ip + ") err-disabled: " + errors);
-//            }
-//        }
-//    }
+
+    private static final Logger log = LoggerFactory.getLogger(PortHealthMonitor.class);
+
+    private final PortStatusService portStatusService;
+
+    public PortHealthMonitor(PortStatusService portStatusService) {
+        this.portStatusService = portStatusService;
+    }
+
+    @Scheduled(
+            fixedDelayString = "${app.monitoring.errdisabled.interval-ms:1800000}",
+            initialDelayString = "${app.monitoring.errdisabled.initial-delay-ms:60000}"
+    )
+    public void checkAllSwitches() {
+        log.info("[PortHealth] Checking switches for err-disabled ports...");
+        List<ErrDisabledDto> result = portStatusService.findErrDisabled((String) null);
+        for (ErrDisabledDto dto : result) {
+            log.warn("[ALERT] {} err-disabled: {}", dto.name, dto.errors);
+        }
+    }
 }

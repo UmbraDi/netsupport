@@ -57,9 +57,33 @@
   ## Веб-интерфейс
 
   - `/` — главная
-  - `/diagnostic.html` — диагностика абонента: выбор города, дома (с автодополнением) и MAC
-    (полный или последние 4 символа)
+  - `/diagnostic.html` — диагностика абонента: выбор города, улицы и дома (оба поля с
+    автодополнением, ввод только из списка) и MAC (полный или последние 4 символа)
+  - `/errors.html` — поиск err-disabled портов по кнопке: выбор города («Все города») →
+    «Найти»; в таблице только коммутаторы с портами в ошибке
   - `/vlan.html` — VLAN по домам: все VLAN'ы, найденные на коммутаторах дома
+
+  ## Мониторинг
+
+  Мониторинг реализован на Spring `@Scheduled` и по умолчанию **выключен**.
+  Включается в `application.properties`:
+
+  ```properties
+  # Пинг коммутаторов (NodeMonitor)
+  app.monitoring.ping.enabled=true
+  app.monitoring.ping.interval-ms=30000
+
+  # Периодический поиск err-disabled портов (PortHealthMonitor)
+  app.monitoring.errdisabled.enabled=true
+  app.monitoring.errdisabled.interval-ms=1800000
+  app.monitoring.errdisabled.initial-delay-ms=60000
+
+  # размер пула потоков для параллельного опроса коммутаторов
+  app.monitoring.errdisabled.pool-size=20
+  ```
+
+  Поиск err-disabled (и по кнопке в `/errors.html`, и в `PortHealthMonitor`) опрашивает
+  коммутаторы параллельно в пуле из `pool-size` потоков.
 
 ## Структура проекта
 
@@ -72,13 +96,16 @@
   │   ├── model               — DiagnosticResult, FdbEntry, PortDetails
   │   └── parser              — FdbParser, InterfaceParser, SubscriberVlanParser
   ├── monitoring              — мониторинг узлов, портов, VLAN
-  │   ├── model               — NodeState, PortError
+  │   ├── NodeMonitor         — @Scheduled пинг коммутаторов (флаг app.monitoring.ping.enabled)
+  │   ├── PortHealthMonitor   — @Scheduled поиск err-disabled (флаг app.monitoring.errdisabled.enabled)
+  │   ├── PortStatusService   — общий опрос err-disabled (по городу / по списку свичей)
+  │   ├── model               — NodeState, PortError, ErrDisabledDto
   │   └── parser              — ErrDisabledParser
   └── shared
       ├── model               — Device, Node, Credentials
       ├── repository          — DeviceRepository (Spring Data JPA)
       └── telnet              — TelnetService
-  Статика: `src/main/resources/static/{index,diagnostic,vlan}.html`
+  Статика: `src/main/resources/static/{index,diagnostic,errors,vlan}.html`
 ```
 
 ## Roadmap
@@ -134,6 +161,4 @@
 - [ ] Мобильное приложение / веб-интерфейс для операторов
 - [ ] Интеграция с тикет-системой
 - [ ] Автоматическое построение карты сети
-- [ ] Таймаут на коммутатор в `PortHealthMonitor` (чтобы один медленный не блокировал цикл)
-- [ ] Параллельный опрос коммутаторов в `PortHealthMonitor` (пул потоков, 10-20)
 - [ ] Логирование медленных коммутаторов (для диагностики проблем с сетью)
